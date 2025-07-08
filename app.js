@@ -4,10 +4,12 @@ const express = require('express');
 const cors = require('cors');
 const app = express();
 const cron = require('node-cron');
+const { getAllEconomicNews } = require('./newsCrawler/crawler'); // 올바른 경로
 
 // Netlify 주소만 허용
 app.use(cors({
-  origin: '*'
+  origin: process.env.ALLOWED_ORIGIN || '*',
+  credentials: true
 }));
 
 // 나머지 라우터
