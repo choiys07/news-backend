@@ -97,17 +97,6 @@ async function updateNewsCache() {
   }
 }
 
-// 압축 미들웨어 (수동 구현)
-app.use((req, res, next) => {
-  const acceptEncoding = req.headers['accept-encoding'] || '';
-  
-  if (acceptEncoding.includes('gzip')) {
-    res.setHeader('Content-Encoding', 'gzip');
-  }
-  
-  next();
-});
-
 // 기본 라우트 - 캐시 헤더 포함
 app.get('/', setCacheHeaders, (req, res) => {
   res.json({ 
