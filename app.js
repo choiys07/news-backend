@@ -21,7 +21,11 @@ app.use(express.urlencoded({ extended: true, limit: '10mb' }));
 
 // CORS 설정 (캐시 헤더 전에 설정)
 app.use(cors({
-  origin:'https://apilivenews.netlify.app/',
+  origin: [
+    'https://teal-bubblegum-b7a03d.netlify.app',
+    'http://localhost:3000',
+    'http://127.0.0.1:5500'
+  ],
   credentials: true,
   methods: ['GET', 'POST', 'PUT', 'DELETE', 'OPTIONS'],
   allowedHeaders: ['Content-Type', 'Authorization', 'Cache-Control', 'If-None-Match'],
@@ -253,7 +257,7 @@ async function initializeServer() {
     
     app.listen(PORT, () => {
       console.log(`서버 실행 중: http://localhost:${PORT}`);
-      console.log(`배포 서버: https://live-news-arjv.onrender.com`);
+      console.log(`배포 서버: https://news-backend-w0xf.onrender.com`);
       console.log(`캐시 상태: ${newsCache.data.length}개 뉴스 캐시됨`);
     });
     
