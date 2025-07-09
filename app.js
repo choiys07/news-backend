@@ -156,14 +156,29 @@ app.get('/api/news/economic', async (req, res) => {
   }
 });
 
-// 뉴스 요약 API
+// 뉴스 요약 API - 수정된 버전
 app.get('/api/news/summary', async (req, res) => {
   const { url } = req.query;
   
   if (!url) {
     res.setHeader('Cache-Control', 'no-cache');
     res.setHeader('Content-Type', 'application/json; charset=utf-8');
-    return res.status(400).json({ error: 'url 쿼리 파라미터가 필요합니다' });
+    return res.status(400).json({ 
+      error: 'url 쿼리 파라미터가 필요합니다',
+      example: '/api/news/summary?url=https://example.com/news'
+    });
+  }
+
+  // URL 유효성 검사
+  try {
+    new URL(url);
+  } catch (urlError) {
+    res.setHeader('Cache-Control', 'no-cache');
+    res.setHeader('Content-Type', 'application/json; charset=utf-8');
+    return res.status(400).json({ 
+      error: '유효하지 않은 URL입니다',
+      provided: url
+    });
   }
 
   try {
@@ -171,20 +186,34 @@ app.get('/api/news/summary', async (req, res) => {
     res.setHeader('Cache-Control', 'public, max-age=3600');
     res.setHeader('Content-Type', 'application/json; charset=utf-8');
     
+    console.log(`요약 요청: ${url}`);
+    const startTime = Date.now();
+    
     const { summarizeNews } = require('./summarizer');
     const summary = await summarizeNews(url);
     
+    const endTime = Date.now();
+    console.log(`요약 완료: ${endTime - startTime}ms`);
+    
     res.json({ 
+      success: true,
       summary,
       url,
-      timestamp: new Date().toISOString()
+      timestamp: new Date().toISOString(),
+      processingTime: `${endTime - startTime}ms`
     });
     
   } catch (error) {
     console.error('요약 API 오류:', error);
     res.setHeader('Cache-Control', 'no-cache');
     res.setHeader('Content-Type', 'application/json; charset=utf-8');
-    res.status(500).json({ error: '요약 실패' });
+    res.status(500).json({ 
+      success: false,
+      error: '요약 처리 중 오류가 발생했습니다',
+      message: error.message,
+      url,
+      timestamp: new Date().toISOString()
+    });
   }
 });
 
