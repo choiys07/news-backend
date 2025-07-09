@@ -97,8 +97,11 @@ async function updateNewsCache() {
   }
 }
 
-// 기본 라우트 - 캐시 헤더 포함
-app.get('/', setCacheHeaders, (req, res) => {
+// 기본 라우트 - 캐시 헤더 포함 (수정된 버전)
+app.get('/', (req, res) => {
+  res.setHeader('Cache-Control', 'public, max-age=60');
+  res.setHeader('Content-Type', 'application/json');
+  
   res.json({ 
     message: '실시간 경제 뉴스 API 서버',
     status: 'running',
@@ -111,9 +114,11 @@ app.get('/', setCacheHeaders, (req, res) => {
   });
 });
 
-// 헬스체크 라우트 - 짧은 캐시
+// 헬스체크 라우트 - 짧은 캐시 (수정된 버전)
 app.get('/health', (req, res) => {
-  res.setHeader('Cache-Control', 'public, max-age=30'); // 30초
+  res.setHeader('Cache-Control', 'public, max-age=30');
+  res.setHeader('Content-Type', 'application/json');
+  
   res.json({ 
     status: 'healthy',
     uptime: process.uptime(),
@@ -125,9 +130,13 @@ app.get('/health', (req, res) => {
   });
 });
 
-// 뉴스 API 라우트 - 캐시 최적화
-app.get('/api/news/economic', setCacheHeaders, async (req, res) => {
+// 뉴스 API 라우트 - 캐시 최적화 (수정된 버전)
+app.get('/api/news/economic', async (req, res) => {
   try {
+    // 캐시 헤더를 먼저 설정
+    res.setHeader('Cache-Control', 'public, max-age=300, s-maxage=600');
+    res.setHeader('Content-Type', 'application/json');
+    
     const news = await updateNewsCache();
     
     // ETag 생성
@@ -150,6 +159,7 @@ app.get('/api/news/economic', setCacheHeaders, async (req, res) => {
     
   } catch (error) {
     console.error('뉴스 API 오류:', error);
+    res.setHeader('Cache-Control', 'no-cache, no-store, must-revalidate');
     res.status(500).json({ 
       error: '뉴스 로딩 실패',
       message: error.message 
@@ -157,20 +167,23 @@ app.get('/api/news/economic', setCacheHeaders, async (req, res) => {
   }
 });
 
-// 뉴스 요약 API
-app.get('/api/news/summary', setCacheHeaders, async (req, res) => {
+// 뉴스 요약 API (수정된 버전)
+app.get('/api/news/summary', async (req, res) => {
   const { url } = req.query;
   
   if (!url) {
+    res.setHeader('Cache-Control', 'no-cache');
     return res.status(400).json({ error: 'url 쿼리 파라미터가 필요합니다' });
   }
 
   try {
+    // 요약은 더 긴 캐시 (1시간)
+    res.setHeader('Cache-Control', 'public, max-age=3600');
+    res.setHeader('Content-Type', 'application/json');
+    
     const { summarizeNews } = require('./summarizer');
     const summary = await summarizeNews(url);
     
-    // 요약은 더 긴 캐시 (1시간)
-    res.setHeader('Cache-Control', 'public, max-age=3600');
     res.json({ 
       summary,
       url,
@@ -179,6 +192,7 @@ app.get('/api/news/summary', setCacheHeaders, async (req, res) => {
     
   } catch (error) {
     console.error('요약 API 오류:', error);
+    res.setHeader('Cache-Control', 'no-cache');
     res.status(500).json({ error: '요약 실패' });
   }
 });
