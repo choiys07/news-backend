@@ -19,23 +19,7 @@ const CACHE_DURATION = 10 * 60 * 1000; // 10분
 app.use(express.json({ limit: '10mb' }));
 app.use(express.urlencoded({ extended: true, limit: '10mb' }));
 
-// 보안 헤더 미들웨어
-app.use((req, res, next) => {
-  // 보안 헤더 설정
-  res.setHeader('X-Content-Type-Options', 'nosniff');
-  res.setHeader('X-Frame-Options', 'DENY');
-  res.setHeader('X-XSS-Protection', '1; mode=block');
-  res.setHeader('Referrer-Policy', 'strict-origin-when-cross-origin');
-  
-  // 정적 리소스에 대한 캐시 설정
-  if (req.path.match(/\.(js|css|png|jpg|jpeg|gif|ico|svg|woff|woff2|ttf|eot)$/)) {
-    res.setHeader('Cache-Control', 'public, max-age=31536000, immutable'); // 1년
-  }
-  
-  next();
-});
-
-// CORS 설정
+// CORS 설정 (캐시 헤더 전에 설정)
 app.use(cors({
   origin: [
     'https://teal-bubblegum-b7a03d.netlify.app',
@@ -44,21 +28,30 @@ app.use(cors({
   ],
   credentials: true,
   methods: ['GET', 'POST', 'PUT', 'DELETE', 'OPTIONS'],
-  allowedHeaders: ['Content-Type', 'Authorization', 'Cache-Control'],
-  exposedHeaders: ['Cache-Control', 'ETag']
+  allowedHeaders: ['Content-Type', 'Authorization', 'Cache-Control', 'If-None-Match'],
+  exposedHeaders: ['Cache-Control', 'ETag', 'Last-Modified']
 }));
 
-// 캐시 미들웨어 함수
-const setCacheHeaders = (req, res, next) => {
-  const cacheControl = req.path.includes('/api/news') 
-    ? 'public, max-age=300, s-maxage=600' // API: 5분 캐시, CDN: 10분
-    : 'public, max-age=60'; // 기본: 1분
+// 전역 보안 헤더 및 캐시 설정 미들웨어
+app.use((req, res, next) => {
+  // 보안 헤더 설정
+  res.setHeader('X-Content-Type-Options', 'nosniff');
+  res.setHeader('X-Frame-Options', 'DENY');
+  res.setHeader('X-XSS-Protection', '1; mode=block');
+  res.setHeader('Referrer-Policy', 'strict-origin-when-cross-origin');
   
-  res.setHeader('Cache-Control', cacheControl);
-  res.setHeader('ETag', `"${Date.now()}"`);
+  // Content-Type 설정 (중요!)
+  if (req.path.includes('/api/')) {
+    res.setHeader('Content-Type', 'application/json; charset=utf-8');
+  }
+  
+  // 정적 리소스 캐시
+  if (req.path.match(/\.(js|css|png|jpg|jpeg|gif|ico|svg|woff|woff2|ttf|eot)$/)) {
+    res.setHeader('Cache-Control', 'public, max-age=31536000, immutable');
+  }
   
   next();
-};
+});
 
 // 뉴스 캐시 업데이트 함수
 async function updateNewsCache() {
@@ -97,10 +90,10 @@ async function updateNewsCache() {
   }
 }
 
-// 기본 라우트 - 캐시 헤더 포함 (수정된 버전)
+// 기본 라우트
 app.get('/', (req, res) => {
   res.setHeader('Cache-Control', 'public, max-age=60');
-  res.setHeader('Content-Type', 'application/json');
+  res.setHeader('Content-Type', 'application/json; charset=utf-8');
   
   res.json({ 
     message: '실시간 경제 뉴스 API 서버',
@@ -114,10 +107,10 @@ app.get('/', (req, res) => {
   });
 });
 
-// 헬스체크 라우트 - 짧은 캐시 (수정된 버전)
+// 헬스체크 라우트
 app.get('/health', (req, res) => {
   res.setHeader('Cache-Control', 'public, max-age=30');
-  res.setHeader('Content-Type', 'application/json');
+  res.setHeader('Content-Type', 'application/json; charset=utf-8');
   
   res.json({ 
     status: 'healthy',
@@ -130,36 +123,32 @@ app.get('/health', (req, res) => {
   });
 });
 
-// 뉴스 API 라우트 - 캐시 최적화 (수정된 버전)
+// 뉴스 API 라우트 - 수정된 버전
 app.get('/api/news/economic', async (req, res) => {
   try {
-    // 캐시 헤더를 먼저 설정
-    res.setHeader('Cache-Control', 'public, max-age=300, s-maxage=600');
-    res.setHeader('Content-Type', 'application/json');
-    
     const news = await updateNewsCache();
+    
+    // 캐시 헤더 설정
+    res.setHeader('Cache-Control', 'public, max-age=300, s-maxage=600');
+    res.setHeader('Content-Type', 'application/json; charset=utf-8');
     
     // ETag 생성
     const etag = `"${newsCache.lastUpdated || Date.now()}"`;
     res.setHeader('ETag', etag);
+    res.setHeader('Last-Modified', new Date(newsCache.lastUpdated || Date.now()).toUTCString());
     
-    // 클라이언트의 If-None-Match 헤더 확인
+    // 조건부 요청 처리
     if (req.headers['if-none-match'] === etag) {
-      return res.status(304).end(); // Not Modified
+      return res.status(304).end();
     }
     
-    res.json({
-      news,
-      meta: {
-        count: news.length,
-        lastUpdated: newsCache.lastUpdated,
-        cached: true
-      }
-    });
+    // 응답 형식 수정 - 배열로 직접 반환
+    res.json(news);
     
   } catch (error) {
     console.error('뉴스 API 오류:', error);
     res.setHeader('Cache-Control', 'no-cache, no-store, must-revalidate');
+    res.setHeader('Content-Type', 'application/json; charset=utf-8');
     res.status(500).json({ 
       error: '뉴스 로딩 실패',
       message: error.message 
@@ -167,19 +156,20 @@ app.get('/api/news/economic', async (req, res) => {
   }
 });
 
-// 뉴스 요약 API (수정된 버전)
+// 뉴스 요약 API
 app.get('/api/news/summary', async (req, res) => {
   const { url } = req.query;
   
   if (!url) {
     res.setHeader('Cache-Control', 'no-cache');
+    res.setHeader('Content-Type', 'application/json; charset=utf-8');
     return res.status(400).json({ error: 'url 쿼리 파라미터가 필요합니다' });
   }
 
   try {
     // 요약은 더 긴 캐시 (1시간)
     res.setHeader('Cache-Control', 'public, max-age=3600');
-    res.setHeader('Content-Type', 'application/json');
+    res.setHeader('Content-Type', 'application/json; charset=utf-8');
     
     const { summarizeNews } = require('./summarizer');
     const summary = await summarizeNews(url);
@@ -193,13 +183,15 @@ app.get('/api/news/summary', async (req, res) => {
   } catch (error) {
     console.error('요약 API 오류:', error);
     res.setHeader('Cache-Control', 'no-cache');
+    res.setHeader('Content-Type', 'application/json; charset=utf-8');
     res.status(500).json({ error: '요약 실패' });
   }
 });
 
 // 캐시 상태 확인 API
 app.get('/api/cache/status', (req, res) => {
-  res.setHeader('Cache-Control', 'no-cache');
+  res.setHeader('Cache-Control', 'no-cache, no-store, must-revalidate');
+  res.setHeader('Content-Type', 'application/json; charset=utf-8');
   res.json({
     cache: {
       lastUpdated: newsCache.lastUpdated,
@@ -217,6 +209,8 @@ app.post('/api/cache/refresh', async (req, res) => {
     newsCache.lastUpdated = null; // 캐시 무효화
     const news = await updateNewsCache();
     
+    res.setHeader('Cache-Control', 'no-cache');
+    res.setHeader('Content-Type', 'application/json; charset=utf-8');
     res.json({
       message: '캐시 새로고침 완료',
       newsCount: news.length,
@@ -224,6 +218,8 @@ app.post('/api/cache/refresh', async (req, res) => {
     });
     
   } catch (error) {
+    res.setHeader('Cache-Control', 'no-cache');
+    res.setHeader('Content-Type', 'application/json; charset=utf-8');
     res.status(500).json({ error: '캐시 새로고침 실패' });
   }
 });
@@ -231,6 +227,7 @@ app.post('/api/cache/refresh', async (req, res) => {
 // 404 핸들러
 app.use((req, res) => {
   res.setHeader('Cache-Control', 'public, max-age=60');
+  res.setHeader('Content-Type', 'application/json; charset=utf-8');
   res.status(404).json({ 
     error: '페이지를 찾을 수 없습니다',
     path: req.path 
@@ -241,7 +238,8 @@ app.use((req, res) => {
 app.use((err, req, res, next) => {
   console.error('서버 에러:', err);
   
-  res.setHeader('Cache-Control', 'no-cache');
+  res.setHeader('Cache-Control', 'no-cache, no-store, must-revalidate');
+  res.setHeader('Content-Type', 'application/json; charset=utf-8');
   res.status(500).json({ 
     error: '서버 내부 오류',
     message: process.env.NODE_ENV === 'development' ? err.message : '서버 오류가 발생했습니다'
