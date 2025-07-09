@@ -22,7 +22,7 @@ app.use(express.urlencoded({ extended: true, limit: '10mb' }));
 // CORS 설정 (캐시 헤더 전에 설정)
 app.use(cors({
   origin: [
-    'https://apsi.netlify.app/',
+    'https://teal-bubblegum-b7a03d.netlify.app/',
     'http://localhost:3000',
     'http://127.0.0.1:5500'
   ],
